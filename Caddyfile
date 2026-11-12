@@ -1,0 +1,15 @@
+# HTTPS pred Gitea. Meno sa berie z GITEA_DOMAIN v .env.
+# Port 80 Caddy automaticky presmeruje na HTTPS.
+
+{$GITEA_DOMAIN} {
+	# Kým nie je certifikát firemnej CA: vlastná CA Caddy.
+	# Počítače jej nedôverujú, add-in a prehliadač budú hlásiť chybu certifikátu.
+	tls internal
+
+	# S certifikátom firemnej CA: zakomentujte riadok vyššie, odkomentujte tento
+	# a súbory dajte do ./certs. Potom: docker compose restart caddy
+	# tls /etc/caddy/certs/gitea.crt /etc/caddy/certs/gitea.key
+
+	encode gzip
+	reverse_proxy gitea:3000
+}

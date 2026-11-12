@@ -1,0 +1,6 @@
+# Secrets and certificates live only on the server
+.env
+certs/
+*.key
+*.crt
+*.bak-*

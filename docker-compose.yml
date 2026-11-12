@@ -1,0 +1,74 @@
+# Gitea pre firemnú sieť: Caddy (HTTPS 80/443) -> Gitea -> PostgreSQL.
+# Von ide iba Caddy. Gitea (3000, 22) ani databáza nie sú publikované.
+# Hodnoty sú v .env vedľa tohto súboru (šablóna .env.example, vytvorí ho setup.sh).
+# Postup: docs/04-produkcia.md
+
+name: gitea
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=gitea
+      - POSTGRES_DB=gitea
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?chýba v .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gitea -d gitea"]
+      interval: 10s
+      retries: 5
+
+  gitea:
+    image: gitea/gitea:28.2.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - TZ=Europe/Bratislava
+      - GITEA__database__DB_TYPE=postgres
+      - GITEA__database__HOST=db:5432
+      - GITEA__database__NAME=gitea
+      - GITEA__database__USER=gitea
+      - GITEA__database__PASSWD=${POSTGRES_PASSWORD:?chýba v .env}
+      # Adresa musí presne sedieť s tým, čo píšu používatelia, inak sa prihlásenie ticho neuloží.
+      - GITEA__server__ROOT_URL=https://${GITEA_DOMAIN:?chýba v .env}/
+      - GITEA__server__DOMAIN=${GITEA_DOMAIN}
+      - GITEA__server__HTTP_PORT=3000
+      # SSH sa nepoužíva, add-in ide cez REST API.
+      - GITEA__server__DISABLE_SSH=true
+      - GITEA__server__START_SSH_SERVER=false
+      # Inštalácia bez webového sprievodcu: sprievodca by bol otvorený celej sieti.
+      # Bez SECRET_KEY by Gitea použila verejne známu predvolenú hodnotu.
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__security__SECRET_KEY=${GITEA_SECRET_KEY:?chýba v .env}
+      - GITEA__security__INTERNAL_TOKEN=${GITEA_INTERNAL_TOKEN:?chýba v .env}
+      - GITEA__service__DISABLE_REGISTRATION=true
+      - GITEA__service__REQUIRE_SIGNIN_VIEW=${REQUIRE_SIGNIN_VIEW:-true}
+    volumes:
+      - gitea-data:/data
+    # Žiadne ports: Gitea je dostupná iba cez Caddy v sieti Compose.
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on:
+      - gitea
+    environment:
+      - GITEA_DOMAIN=${GITEA_DOMAIN}
+    ports:
+      - "80:80"     # iba presmerovanie na HTTPS
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/caddy/certs:ro
+      - caddy-data:/data
+
+volumes:
+  db-data:
+  gitea-data:
+  caddy-data:
